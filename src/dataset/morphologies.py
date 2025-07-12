@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 
-class CompositionalMorpologies:
+class CompositionalMorphologies:
     def __init__(
         self,
         dataset_folder: str | Path,

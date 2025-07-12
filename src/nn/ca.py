@@ -4,8 +4,11 @@ import jax.random as jr
 import jax.lax as lax
 import equinox as eqx
 from typing import Callable
+from jaxtyping import Array, Float, Int
 
-State = tuple[jax.Array, jax.Array]
+
+State = Float[Array, "..."]
+Carry = tuple[State, jax.Array]
 
 
 class CellularAutomata(eqx.Module):
@@ -17,11 +20,11 @@ class CellularAutomata(eqx.Module):
         self.perception_fn = perception_fn
         self.update_fn = update_fn
 
-    def __call__(self, states: jax.Array, n_steps: int | tuple[int, int], key: jax.Array):
+    def __call__(self, init_state: State, n_steps: int | tuple[int, int], key: jax.Array):
         carry_key, sample_key = jr.split(key)
         num_dev_steps, max_steps = self.sample_num_steps(n_steps, sample_key)
 
-        def f(carry: State, step):
+        def f(carry: Carry, step: Int) -> tuple[Carry, State]:
             cell_states, key = carry
             p_key, u_key, key = jr.split(key, 3)
 
@@ -36,9 +39,10 @@ class CellularAutomata(eqx.Module):
 
             return (cell_states, key), cell_states
 
-        init_state = states, carry_key
-        _, dev_path = lax.scan(f, init_state, jnp.arange(max_steps))
-        return dev_path[num_dev_steps-1], dev_path
+        _, dev_path = lax.scan(f, (init_state, carry_key), jnp.arange(max_steps))
+        dev_path = jnp.concat([init_state[None], dev_path], axis=0)
+
+        return dev_path[num_dev_steps], dev_path
 
     def sample_num_steps(self, n_steps: int | tuple[int, int] , key: jax.Array):
         if isinstance(n_steps, int):
