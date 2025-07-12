@@ -17,7 +17,7 @@ from tqdm import tqdm
 from typing import Callable
 from jaxtyping import PyTree
 
-from src.model.nca import GrowingNCA
+from src.model.nca import GrowingNCA, SteerableNCA
 from src.dataset.emoji import SingleEmojiDataset
 from src.dataset.morphologies import SingleCompositeMorphology
 from src.visualisation.utils import plot_img, plot_dev_path
@@ -26,7 +26,8 @@ from src.utils import save_pytree
 
 def main():
     seed = np.random.choice(2 ** 32 - 1)
-    nca = GrowingNCA((64, 64), num_dev_steps=(48, 96), key=jr.key(seed))
+    # nca = GrowingNCA((64, 64), num_dev_steps=(48, 96), key=jr.key(seed))
+    nca = SteerableNCA((64, 64), num_dev_steps=(48, 96), key=jr.key(seed))
 
     # final_state, trace = jax.vmap(nca)(jr.split(jr.key(42), num=10))
 
