@@ -102,11 +102,17 @@ class SteerableNCA(eqx.Module):
     state_size: int
     ca: CellularAutomata
     num_dev_steps: tuple[int, int]
+    rgb_init: Literal['none', 'angle_based']
+    hidden_init: Literal['constant', 'sinusoidal']
+    initial_angle: Literal['value', 'radial']
 
     def __init__(
         self,
         img_size,
         hidden_size = 12,
+        rgb_init: Literal['none', 'angle_based'] = 'none',
+        hidden_init: Literal['constant', 'sinusoidal'] = 'constant',
+        initial_angle: Literal['value', 'radial'] = 'radial',
         perception_type: Literal['steerable', 'steerable_with_laplace'] = 'steerable',
         update_width = 128,
         update_depth = 1,
@@ -153,6 +159,9 @@ class SteerableNCA(eqx.Module):
 
         self.img_size = img_size
         self.state_size = state_size
+        self.rgb_init = rgb_init
+        self.hidden_init = hidden_init
+        self.initial_angle = initial_angle
         self.ca = CellularAutomata(perception_fn, update_fn)
         self.num_dev_steps = num_dev_steps
 
@@ -164,12 +173,15 @@ class SteerableNCA(eqx.Module):
             vis_chn=3,
             hidden_chn=self.state_size - 4,
             angle_chn=1,
+            rgb_init=self.rgb_init,
+            hidden_init=self.hidden_init,
+            initial_angle=self.initial_angle,
         )
 
     def __call__(self, key, steps=None):
         if steps is None:
             steps = self.num_dev_steps
-        init_state = self.init(key)
+        init_state = self.init(key)[0]
         cell_states, dev_path = self.ca(init_state, steps, key=key)
         return cell_states[:4], dev_path
 
@@ -210,6 +222,9 @@ def init_radial_seeds(
     vis_chn: int,
     hidden_chn: int,
     angle_chn: int,
+    rgb_init: Literal['none', 'angle_based'] = 'none',
+    hidden_init: Literal['constant', 'sinusoidal'] = 'constant',
+    initial_angle: Literal['value', 'radial'] = 'radial',
     angle: float = 0.0
 ) -> Float[Array, "C H W"]:
     H, W = input_shape
@@ -231,13 +246,29 @@ def init_radial_seeds(
     xy = np.stack(xy, axis=0).astype(np.int32) + (H // 2)
 
     # this is where the morphogens are sampled, currently to fixed values
-    # x[:vis_chn, xy[1], xy[0]] = rgb_linspace(xy.shape[1]).astype(np.float32).T
-    x[vis_chn:vis_chn + hidden_chn:, xy[1], xy[0]] = 1.0
-    x[-angle_chn:, xy[1], xy[0]] = t
+    if rgb_init == 'angle_based':
+        x[:vis_chn, xy[1], xy[0]] = rgb_linspace(xy.shape[1]).astype(np.float32).T
+    elif rgb_init != 'none':
+        raise ValueError()
+
+    if hidden_init == 'constant':
+        x[vis_chn:vis_chn + hidden_chn:, xy[1], xy[0]] = 1.0
+    elif hidden_init == 'sinusoidal':
+        raise NotImplementedError()
+    else:
+        raise ValueError()
+
+    if initial_angle == 'radial':
+        x[-angle_chn:, xy[1], xy[0]] = t
+    elif initial_angle == 'value':
+        x[-angle_chn:, xy[1], xy[0]] = angle % (2 * np.pi)
+    else:
+        raise ValueError()
+
     # x[:, :vis_chn, xy[1], xy[0]] = 1.0
     # x[:, vis_chn:vis_chn + hidden_chn, xy[1], xy[0]] = sinusoidal_embeddings(
     #     hidden_chn, xy[1], xy[0]
     # ).T
 
     # x = rotate_n(x, B, n_seeds) if angle is None else T.rotate(x, angle)
-    return x  # type: ignore
+    return x, xy  # type: ignore
